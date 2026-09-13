@@ -173,7 +173,7 @@ function SSGIControls() {
   const { enabled, quality, ...settings } = useControls({
     ssgi: folder(
       {
-        enabled: { value: true, label: "ssgi" },
+        enabled: { value: false, label: "ssgi" },
         quality: {
           value: "medium" as SsgiQuality,
           options: ["low", "medium", "high"] as const,
