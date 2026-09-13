@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import { Canvas, extend } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
@@ -67,13 +67,45 @@ export default function Viewport() {
 
   // Touch devices have no hoverable pointer to drive the fish with, so they
   // keep the bar. `pointer: coarse` asks about the *primary* input rather than
-  // the screen width, which is the actual question: a small window on a laptop
+  // the screen width, which is the right question: a small window on a laptop
   // should still be mouse-driven.
-  const [touch] = useState(
+  const [touch, setTouch] = useState(
     () =>
       typeof window !== "undefined" &&
       window.matchMedia("(pointer: coarse)").matches,
   );
+
+  // ...but read once at mount that answer goes stale, and in two ways that both
+  // end with a phone showing no bar:
+  //
+  //  - Devtools device emulation toggled after the page loaded keeps whatever
+  //    was true at load. You would have to reload to get the bar back, which is
+  //    not obvious when the thing you are testing *is* the bar.
+  //  - Hybrids — a touchscreen laptop, an iPad with a trackpad — report a fine
+  //    pointer and then get touched anyway, with no way back to the bar at all.
+  //
+  // So it tracks the query live, and whichever input was actually used last
+  // wins over what the device claims about itself. The setters return the
+  // current value when nothing changes, so React bails out rather than
+  // re-rendering the scene on every mouse move.
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const onQuery = () => setTouch(coarse.matches);
+    const onTouch = () => setTouch((was) => (was ? was : true));
+    const onPointer = (event: PointerEvent) => {
+      if (event.pointerType === "mouse") setTouch((was) => (was ? false : was));
+    };
+
+    coarse.addEventListener("change", onQuery);
+    window.addEventListener("touchstart", onTouch, { passive: true });
+    window.addEventListener("pointermove", onPointer, { passive: true });
+
+    return () => {
+      coarse.removeEventListener("change", onQuery);
+      window.removeEventListener("touchstart", onTouch);
+      window.removeEventListener("pointermove", onPointer);
+    };
+  }, []);
 
   const [startCollapsed] = useState(
     () =>

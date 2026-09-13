@@ -141,3 +141,34 @@ html, body {
 .hud--low {
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
+
+/* Mobile browsers park their own toolbar over the bottom of the viewport, and
+   `env(safe-area-inset-bottom)` is 0 in a normal Safari tab — it only reports
+   the home indicator, not the URL bar. A bar sitting 14px off the bottom ends
+   up under the chrome and reads as missing, which is the worst failure mode for
+   the one control the device has. Lift it on coarse pointers. */
+@media (pointer: coarse) {
+  .scrub {
+    bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .hud {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Fingers need more than a 13px dot to grab. */
+  .scrub input[type="range"] {
+    height: 34px;
+  }
+
+  .scrub input[type="range"]::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+    margin-top: -9px;
+  }
+
+  .scrub input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
+}

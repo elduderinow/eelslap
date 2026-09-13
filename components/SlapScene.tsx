@@ -219,6 +219,9 @@ export default function SlapScene({
   useEffect(() => {
     if (touch) return;
     const onMove = (event: PointerEvent) => {
+      // A finger dragging the bar also emits pointermove. Without this, the
+      // frame a hybrid switches modes on would have both drivers fighting.
+      if (event.pointerType === "touch") return;
       pointerX.current = THREE.MathUtils.clamp(
         event.clientX / window.innerWidth,
         0,
