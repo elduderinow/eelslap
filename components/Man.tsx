@@ -27,6 +27,18 @@ import {
 
 const MODEL = "/models/LeePerrySmith/LeePerrySmith.glb";
 
+/**
+ * The uniform node types the slap rig passes around.
+ *
+ * These were each `ReturnType<typeof uniform>`, which named a usable node until @types/three
+ * 0.186: `uniform` is an overload set there, so `ReturnType` picks the *last* overload and lands
+ * on `UniformNode<unknown, unknown>` — a node with none of the TSL operators on it, so every
+ * `.mul()` and `.xyz` downstream stops type-checking. Name the concrete node types instead.
+ */
+type FloatUniform = THREE.UniformNode<"float", number>;
+type Vec3Uniform = THREE.UniformNode<"vec3", THREE.Vector3>;
+type Vec4Uniform = THREE.UniformNode<"vec4", THREE.Vector4>;
+
 /** Everything in the scene is measured in head-heights. */
 const HEAD_HEIGHT = 1;
 
@@ -163,12 +175,12 @@ const jelly = Fn(
   }: {
     renderer: THREE.WebGPURenderer;
     geometry: THREE.BufferGeometry;
-    uHit: ReturnType<typeof uniform>;
-    uPush: ReturnType<typeof uniform>;
-    uElasticity: ReturnType<typeof uniform>;
-    uDamping: ReturnType<typeof uniform>;
-    uBrushSize: ReturnType<typeof uniform>;
-    uNonlinear: ReturnType<typeof uniform>;
+    uHit: Vec4Uniform;
+    uPush: Vec3Uniform;
+    uElasticity: FloatUniform;
+    uDamping: FloatUniform;
+    uBrushSize: FloatUniform;
+    uNonlinear: FloatUniform;
   }) => {
     const count = geometry.attributes.position.count;
 
@@ -246,7 +258,7 @@ const jelly = Fn(
 );
 
 /** A TSL vec3 expression, whatever concrete node type produced it. */
-type Vec3Node = typeof positionLocal;
+type Vec3Node = THREE.Node<"vec3">;
 
 /**
  * Turns a rigid head rotation into a neck that bends. The rotation angle is
@@ -259,8 +271,8 @@ type Vec3Node = typeof positionLocal;
  */
 function neckBend(
   basePosition: Vec3Node,
-  uSwing: ReturnType<typeof uniform>,
-  uShove: ReturnType<typeof uniform>,
+  uSwing: FloatUniform,
+  uShove: FloatUniform,
 ) {
   const weight = mix(
     float(SHOULDER_FOLLOW),
@@ -548,14 +560,14 @@ function JellyHead({
   geometry: THREE.BufferGeometry;
   material: THREE.MeshPhongNodeMaterial;
   uniforms: {
-    uHit: ReturnType<typeof uniform>;
-    uPush: ReturnType<typeof uniform>;
-    uElasticity: ReturnType<typeof uniform>;
-    uDamping: ReturnType<typeof uniform>;
-    uBrushSize: ReturnType<typeof uniform>;
-    uNonlinear: ReturnType<typeof uniform>;
-    uSwing: ReturnType<typeof uniform>;
-    uShove: ReturnType<typeof uniform>;
+    uHit: Vec4Uniform;
+    uPush: Vec3Uniform;
+    uElasticity: FloatUniform;
+    uDamping: FloatUniform;
+    uBrushSize: FloatUniform;
+    uNonlinear: FloatUniform;
+    uSwing: FloatUniform;
+    uShove: FloatUniform;
   };
 }) {
   const gl = useThree((s) => s.gl) as unknown as THREE.WebGPURenderer;
@@ -588,12 +600,12 @@ function JellyHead({
       );
     }
 
-    const base = canCompute ? attribute("storagePosition") : positionLocal;
-    const { position, normal } = neckBend(
-      base as Vec3Node,
-      uniforms.uSwing,
-      uniforms.uShove,
-    );
+    // The node type has to be named: `attribute()` infers `unknown` without it, and the vec3
+    // operators `neckBend` uses are only on a typed node. It is the storage buffer's real layout.
+    const base = canCompute
+      ? attribute("storagePosition", "vec3")
+      : positionLocal;
+    const { position, normal } = neckBend(base, uniforms.uSwing, uniforms.uShove);
 
     material.positionNode = position;
     material.normalNode = normal;
