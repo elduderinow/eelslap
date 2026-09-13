@@ -6,6 +6,7 @@ import { Canvas, extend } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Leva, folder, useControls } from "leva";
 import SlapScene from "./SlapScene";
+import Ssgi from "./Ssgi";
 import Stage from "./Stage";
 
 // Register the WebGPU build's classes with the r3f reconciler so JSX elements
@@ -87,6 +88,7 @@ export default function Viewport() {
           <color attach="background" args={["#3d6b2b"]} />
 
           <Lights />
+          <Ssgi />
           <Stage />
 
           <Suspense fallback={null}>
