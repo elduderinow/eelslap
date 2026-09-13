@@ -39,6 +39,13 @@ type FloatUniform = THREE.UniformNode<"float", number>;
 type Vec3Uniform = THREE.UniformNode<"vec3", THREE.Vector3>;
 type Vec4Uniform = THREE.UniformNode<"vec4", THREE.Vector4>;
 
+/**
+ * Which cheek a blow lands on: `1` is screen-right (his left), `-1` its mirror.
+ * The eel sweeps the whole way across his face, so which one it reaches first
+ * — and therefore hits — is decided by the direction it was swung from.
+ */
+export type Side = 1 | -1;
+
 /** Everything in the scene is measured in head-heights. */
 const HEAD_HEIGHT = 1;
 
@@ -126,13 +133,15 @@ function useHeadGeometry() {
  * surface rather than guessing a coordinate. Returns the contact point and the
  * outward surface normal there.
  */
-function probeCheek(geometry: THREE.BufferGeometry) {
+function probeCheek(geometry: THREE.BufferGeometry, side: Side) {
   const mesh = new THREE.Mesh(geometry);
   const raycaster = new THREE.Raycaster();
 
-  // Come in from frame-right and slightly in front, the way the eel arrives,
-  // aimed at a point just below the eye line.
-  const origin = new THREE.Vector3(0.9, -0.08, 1.1);
+  // Come in from the side the eel arrives on, slightly in front, aimed at a
+  // point just below the eye line. `side` mirrors the ray, which is all it
+  // takes: the scan is close enough to symmetric that the two cheeks come back
+  // as mirror images of each other.
+  const origin = new THREE.Vector3(0.9 * side, -0.08, 1.1);
   const target = new THREE.Vector3(0, -0.1, 0);
   raycaster.set(origin, target.clone().sub(origin).normalize());
 
@@ -141,8 +150,8 @@ function probeCheek(geometry: THREE.BufferGeometry) {
     // The scan should always be hit from there, but never let a miss take the
     // scene down: fall back to a plausible cheek.
     return {
-      point: new THREE.Vector3(0.28, -0.1, 0.3),
-      normal: new THREE.Vector3(0.6, 0, 0.8).normalize(),
+      point: new THREE.Vector3(0.28 * side, -0.1, 0.3),
+      normal: new THREE.Vector3(0.6 * side, 0, 0.8).normalize(),
     };
   }
 
@@ -337,7 +346,7 @@ export default function Man({
   slapRef,
 }: {
   /** Filled in with the trigger so the eel can land a blow on contact. */
-  slapRef?: RefObject<((force: number) => void) | null>;
+  slapRef?: RefObject<((force: number, side: Side) => void) | null>;
 }) {
   const geometry = useHeadGeometry();
   const [colorMap, specularMap, normalTexture] = useTexture([
@@ -348,9 +357,16 @@ export default function Man({
 
   const pose = useRef<THREE.Group>(null);
 
-  // Where the blow lands, measured off the mesh so the defaults are already on
-  // the cheek rather than floating in front of it.
-  const contact = useMemo(() => probeCheek(geometry), [geometry]);
+  // Where a blow lands on each cheek, measured off the mesh so the points are
+  // already on the surface rather than floating in front of it.
+  const cheeks = useMemo(
+    () => ({ 1: probeCheek(geometry, 1), "-1": probeCheek(geometry, -1) }),
+    [geometry],
+  );
+
+  // Which one the blow in flight landed on. The jelly and the recoil both read
+  // it, so it has to outlive the call that set it.
+  const contact = useRef(cheeks[1]);
 
   // Seconds left in the current contact window. Nothing else in the scene is
   // stateful; this one is, because the jelly is.
@@ -364,7 +380,10 @@ export default function Man({
    *  trigger below stays stable and can be handed to the eel once. */
   const gain = useRef(0.22);
 
-  const fire = (force = 1) => {
+  const fire = (force = 1, side: Side = 1) => {
+    // The jelly and the recoil both read `contact` every frame, so picking the
+    // cheek here is the whole of what makes the blow two-sided.
+    contact.current = side > 0 ? cheeks[1] : cheeks["-1"];
     strength.current = gain.current * force;
     contactLeft.current = CONTACT_TIME;
     sinceHit.current = 0;
@@ -400,7 +419,10 @@ export default function Man({
         brushSize: { value: 0.49, min: 0.05, max: 0.8, step: 0.01 },
         brushStrength: { value: 0.22, min: 0, max: 1, step: 0.01 },
         water: { value: false, label: "water ripple" },
-        slap: button(() => fire()),
+        // The panel's own trigger fires the flesh and the recoil without
+        // moving the eel, so the wobble can be tuned on its own. The swing
+        // itself is the `slap` button in the eel's folder.
+        headOnly: { ...button(() => fire()), label: "slap (head only)" },
       },
       { collapsed: false },
     ),
@@ -435,8 +457,9 @@ export default function Man({
     // xyz is the contact point, w is how hard the blow is landing this frame.
     const uHit = uniform(new THREE.Vector4(0, 0, 0, 0));
     // The direction the surface is driven: into the face along the inward
-    // normal at the contact point.
-    const uPush = uniform(contact.normal.clone().negate());
+    // normal at the contact point. Re-pointed by `fire` for the cheek that was
+    // actually struck.
+    const uPush = uniform(cheeks[1].normal.clone().negate());
     const uElasticity = uniform(0.4);
     const uDamping = uniform(0.94);
     const uBrushSize = uniform(0.25);
@@ -476,10 +499,17 @@ export default function Man({
         uShove,
       },
     };
-  }, [colorMap, specularMap, normalTexture, contact]);
+  }, [colorMap, specularMap, normalTexture, cheeks]);
 
   useFrame((state, delta) => {
-    const { uHit, uElasticity, uDamping, uBrushSize, uNonlinear } = uniforms;
+    const { uHit, uPush, uElasticity, uDamping, uBrushSize, uNonlinear } =
+      uniforms;
+
+    // The blow drives the surface along the inward normal of whichever cheek
+    // was struck. Written here rather than in `fire` so there is one place the
+    // uniforms are filled, and so the sign the recoil reads below can never
+    // disagree with the point the jelly is being dented at.
+    uPush.value.copy(contact.current.normal).negate();
 
     uElasticity.value = elasticity;
     uDamping.value = damping;
@@ -490,9 +520,9 @@ export default function Man({
     // blow only. `w` is the per-frame push, so it has to go back to zero or the
     // face keeps being hit.
     uHit.value.set(
-      contact.point.x,
-      contact.point.y,
-      contact.point.z,
+      contact.current.point.x,
+      contact.current.point.y,
+      contact.current.point.z,
       contactLeft.current > 0 ? strength.current : 0,
     );
 
@@ -514,7 +544,7 @@ export default function Man({
     // The blow drives the head along `uPush`, so the turn follows its sign:
     // hit on the right cheek and the face swings to the left.
     const drive = swing * strength.current * SLAP_GAIN;
-    const lateral = Math.sign(uniforms.uPush.value.x) || -1;
+    const lateral = Math.sign(uPush.value.x) || -1;
 
     // Handed to the vertex stage rather than applied here. Rotating the group
     // would take the shoulders with it.
