@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import { Canvas, extend } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Leva, folder, useControls } from "leva";
 import SlapScene from "./SlapScene";
+import { SWING } from "./slapTimeline";
 import Ssgi from "./Ssgi";
 import Stage from "./Stage";
 
@@ -56,6 +57,24 @@ export default function Viewport() {
     ),
   });
 
+  // The scrub bar lives out here in the DOM, because it has to sit over the
+  // canvas rather than in it. These two nodes are the whole channel between it
+  // and the scene: `SlapScene` reads the slider every frame while the fish is
+  // idle, and writes back to both while a swing is playing. Nothing about
+  // dragging it goes through React, so a drag never re-renders the scene.
+  const slider = useRef<HTMLInputElement>(null);
+  const live = useRef<HTMLSpanElement>(null);
+
+  // Touch devices have no hoverable pointer to drive the fish with, so they
+  // keep the bar. `pointer: coarse` asks about the *primary* input rather than
+  // the screen width, which is the actual question: a small window on a laptop
+  // should still be mouse-driven.
+  const [touch] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(pointer: coarse)").matches,
+  );
+
   const [startCollapsed] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -66,7 +85,7 @@ export default function Viewport() {
     <>
       <Leva titleBar={{ title: "controls" }} collapsed={startCollapsed} />
 
-      <div id="scene">
+      <div id="scene" className={touch ? undefined : "no-cursor"}>
         <Canvas
           // `flat` is NoToneMapping. r3f defaults to ACES Filmic, which crushes
           // the shadow side of the face and turns the scan's colour map into
@@ -83,6 +102,7 @@ export default function Viewport() {
             await renderer.init();
             return renderer;
           }}
+          frameloop="always"
           onCreated={({ camera }) => camera.lookAt(...TARGET)}
         >
           <color attach="background" args={["#3d6b2b"]} />
@@ -92,7 +112,12 @@ export default function Viewport() {
           <Stage />
 
           <Suspense fallback={null}>
-            <SlapScene autoPlay={autoPlay} />
+            <SlapScene
+              autoPlay={autoPlay}
+              touch={touch}
+              slider={slider}
+              live={live}
+            />
           </Suspense>
 
           {orbit && (
@@ -107,9 +132,40 @@ export default function Viewport() {
         </Canvas>
       </div>
 
-      <div className="hud">
+      <div className={touch ? "hud" : "hud hud--low"}>
         <strong>Eel Slap</strong>
-        move the mouse <em>left</em> and <em>right</em> to swing
+        {touch ? (
+          <>
+            drag the bar to swing, or hit <em>slap</em> in the panel
+          </>
+        ) : (
+          <>
+            move the mouse <em>left</em> and <em>right</em>
+          </>
+        )}
+      </div>
+
+      <div className={touch ? "scrub" : "scrub scrub--hidden"}>
+        <span className="scrub-end">{SWING.restLeft}&deg;</span>
+        {/* Mirrored in CSS so the left rest angle reads on the left of the bar
+            and the right one on the right. The bounds are re-stated by
+            `SlapScene` from the live panel values, so these are only what the
+            first paint starts from. */}
+        <input
+          ref={slider}
+          type="range"
+          min={Math.min(SWING.restRight, SWING.restLeft)}
+          max={Math.max(SWING.restRight, SWING.restLeft)}
+          step={0.1}
+          defaultValue={SWING.restRight}
+          aria-label="eel yaw about the tail, in degrees"
+          aria-hidden={touch ? undefined : true}
+          tabIndex={touch ? undefined : -1}
+        />
+        <span className="scrub-end">{SWING.restRight}&deg;</span>
+        <span className="scrub-live" ref={live}>
+          {SWING.restRight.toFixed(1)}&deg;
+        </span>
       </div>
     </>
   );

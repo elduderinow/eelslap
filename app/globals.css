@@ -23,7 +23,7 @@ html, body {
 .hud {
   position: fixed;
   left: 18px;
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(58px + env(safe-area-inset-bottom, 0px));
   z-index: 10;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
@@ -43,4 +43,101 @@ html, body {
 .hud em {
   font-style: normal;
   color: #4fd6a8;
+}
+
+/* The yaw scrub, pinned across the bottom. Left end is the follow-through and
+   right end is rest, which is the opposite of a range input's natural
+   direction, so the input itself is mirrored and the end labels are not. */
+.scrub {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #6f7480;
+}
+
+.scrub-end {
+  width: 34px;
+  flex: none;
+}
+
+.scrub-end:last-of-type {
+  text-align: right;
+}
+
+/* Written to from the frame loop, so it is given a fixed width — letting it
+   resize per frame would shove the slider about as the digits change. */
+.scrub-live {
+  width: 52px;
+  flex: none;
+  text-align: right;
+  color: #4fd6a8;
+}
+
+.scrub input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+  transform: scaleX(-1);
+}
+
+.scrub input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: #2a2f3a;
+}
+
+.scrub input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -5.5px;
+  border: none;
+  border-radius: 50%;
+  background: #4fd6a8;
+}
+
+.scrub input[type="range"]::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+  background: #2a2f3a;
+}
+
+.scrub input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 50%;
+  background: #4fd6a8;
+}
+
+/* Desktop hides the pointer over the canvas: the eel is the cursor. Scoped to
+   the scene, not the document, so the cursor comes back over the leva panel —
+   which is unusable without it. */
+.no-cursor,
+.no-cursor * {
+  cursor: none;
+}
+
+/* The bar is still the value the frame loop reads on desktop; the mouse just
+   writes to it instead of a thumb. `display: none` keeps `valueAsNumber`
+   working, so nothing downstream has to know which input is driving. */
+.scrub--hidden {
+  display: none;
+}
+
+/* Nothing to clear once the bar is gone. */
+.hud--low {
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
